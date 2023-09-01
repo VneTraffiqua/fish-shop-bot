@@ -1,6 +1,7 @@
 import os
 import logging
 import redis
+import requests
 from environs import Env
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Filters, Updater
@@ -10,6 +11,8 @@ _database = None
 
 
 def start(update, context):
+    shop_items = get_shop_items(strapi_token)
+
     """
     Хэндлер для состояния START.
 
@@ -17,15 +20,16 @@ def start(update, context):
     Теперь в ответ на его команды будет запускаеться хэндлер echo.
     """
     keyboard = [
-        [
-            InlineKeyboardButton("Option 1", callback_data='1'),
-            InlineKeyboardButton("Option 2", callback_data='2'),
-        ],
-        [InlineKeyboardButton("Option 3", callback_data='3')],
+        [InlineKeyboardButton(
+            item['attributes']['title'], callback_data='3'
+        )] for item in shop_items['data']
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text(text='Привет!', reply_markup=reply_markup)
+    update.message.reply_text(
+        text='Please, chooce:',
+        reply_markup=reply_markup
+    )
     return "ECHO"
 
 
@@ -97,12 +101,23 @@ def get_database_connection():
     return _database
 
 
+def get_shop_items(strapi_token):
+    url = 'http://localhost:1337/api/products'
+    header = {
+        'Authorization': f'bearer {strapi_token}'
+    }
+    response = requests.get(url, headers=header)
+    response.raise_for_status()
+    return response.json()
+
+
 if __name__ == '__main__':
     env = Env()
     env.read_env()
-    token = env.str("TG_TOKEN")
+    tg_token = env.str("TG_TOKEN")
+    strapi_token = env.str('STRAPI_TOKEN')
 
-    updater = Updater(token)
+    updater = Updater(tg_token)
     dispatcher = updater.dispatcher
     dispatcher.add_handler(CallbackQueryHandler(handle_users_reply))
     dispatcher.add_handler(MessageHandler(Filters.text, handle_users_reply))
