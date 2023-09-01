@@ -17,8 +17,6 @@ def start(update, context):
     """
     Хэндлер для состояния START.
 
-    Бот отвечает пользователю фразой "Привет!" и переводит его в состояние ECHO.
-    Теперь в ответ на его команды будет запускаеться хэндлер echo.
     """
     keyboard = [
         [InlineKeyboardButton(
@@ -45,18 +43,24 @@ def handle_menu(update, context):
     img_url = data_item['attributes']['picture']['data'][0]['attributes']['url']
     response = requests.get(f"http://localhost:1337{img_url}")
     image_data = BytesIO(response.content)
-    print(query.message)
-    context.bot.send_photo(
+
+    keyboard = [
+        [InlineKeyboardButton('Назад', callback_data='/start')]
+        ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    query.bot.send_photo(
         chat_id=query.message.chat_id,
         photo=image_data,
+        caption=f"{data_item['attributes']['title']} "
+                f"({data_item['attributes']['price']} за 1 кг):\n\n"
+                f"{data_item['attributes']['description']}",
+        reply_markup=reply_markup
     )
-    query.edit_message_text(
-        text=f"{data_item['attributes']['title']} "
-             f"({data_item['attributes']['price']} за 1 кг):\n\n"
-             f"{data_item['attributes']['description']}",
-    )
+    return "START"
 
-    return "HANDLE_MENU"
+
+def handle_description(update, context):
+    pass
 
 
 def handle_users_reply(update, context):
@@ -89,6 +93,8 @@ def handle_users_reply(update, context):
     states_functions = {
         'START': start,
         'HANDLE_MENU': handle_menu,
+        # 'HANDLE_DESCRIPTION': start,
+
     }
     state_handler = states_functions[user_state]
     # Если вы вдруг не заметите, что python-telegram-bot перехватывает ошибки.
