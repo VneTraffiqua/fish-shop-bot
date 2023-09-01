@@ -2,6 +2,7 @@ import os
 import logging
 import redis
 import requests
+from io import BytesIO
 from environs import Env
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Filters, Updater
@@ -21,28 +22,41 @@ def start(update, context):
     """
     keyboard = [
         [InlineKeyboardButton(
-            item['attributes']['title'], callback_data='3'
+            item['attributes']['title'], callback_data=item['id']
         )] for item in shop_items['data']
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
+    context.bot.delete_message(chat_id=update.message.chat_id,
+                               message_id=update.message.message_id,
+                               )
     update.message.reply_text(
         text='Please, chooce:',
         reply_markup=reply_markup
     )
-    return "ECHO"
+    return "HANDLE_MENU"
 
 
-def echo(update, context):
-    """
-    Хэндлер для состояния ECHO.
+def handle_menu(update, context):
+    """Parses the CallbackQuery and updates the message text."""
+    query = update.callback_query
+    query.answer()
+    data_item = get_item_by_id(strapi_token=strapi_token, item_id=query.data)['data']
+    img_url = data_item['attributes']['picture']['data'][0]['attributes']['url']
+    response = requests.get(f"http://localhost:1337{img_url}")
+    image_data = BytesIO(response.content)
+    print(query.message)
+    context.bot.send_photo(
+        chat_id=query.message.chat_id,
+        photo=image_data,
+    )
+    query.edit_message_text(
+        text=f"{data_item['attributes']['title']} "
+             f"({data_item['attributes']['price']} за 1 кг):\n\n"
+             f"{data_item['attributes']['description']}",
+    )
 
-    Бот отвечает пользователю тем же, что пользователь ему написал.
-    Оставляет пользователя в состоянии ECHO.
-    """
-    users_reply = update.message.text
-    update.message.reply_text(users_reply)
-    return "ECHO"
+    return "HANDLE_MENU"
 
 
 def handle_users_reply(update, context):
@@ -74,7 +88,7 @@ def handle_users_reply(update, context):
 
     states_functions = {
         'START': start,
-        'ECHO': echo
+        'HANDLE_MENU': handle_menu,
     }
     state_handler = states_functions[user_state]
     # Если вы вдруг не заметите, что python-telegram-bot перехватывает ошибки.
@@ -107,6 +121,19 @@ def get_shop_items(strapi_token):
         'Authorization': f'bearer {strapi_token}'
     }
     response = requests.get(url, headers=header)
+    response.raise_for_status()
+    return response.json()
+
+
+def get_item_by_id(strapi_token, item_id):
+    url = f'http://localhost:1337/api/products/{item_id}'
+    header = {
+        'Authorization': f'bearer {strapi_token}'
+    }
+    params = {
+        'populate': 'picture'
+    }
+    response = requests.get(url, headers=header, params=params)
     response.raise_for_status()
     return response.json()
 
