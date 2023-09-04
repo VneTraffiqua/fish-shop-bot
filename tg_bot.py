@@ -12,12 +12,20 @@ _database = None
 
 
 def start(update, context):
+    keyboard = [
+        [InlineKeyboardButton('Вход', callback_data='start')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    update.message.reply_text(
+        text='Войдите в магазин',
+        reply_markup=reply_markup
+    )
+    return 'HANDLE_MENU'
+
+
+def handle_menu(update, context):
     shop_items = get_shop_items(strapi_token)
-
-    """
-    Хэндлер для состояния START.
-
-    """
+    query = update.callback_query
     keyboard = [
         [InlineKeyboardButton(
             item['attributes']['title'], callback_data=item['id']
@@ -25,17 +33,17 @@ def start(update, context):
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    context.bot.delete_message(chat_id=update.message.chat_id,
-                               message_id=update.message.message_id,
+    context.bot.delete_message(chat_id=query.message.chat_id,
+                               message_id=query.message.message_id,
                                )
-    update.message.reply_text(
+    query.message.reply_text(
         text='Please, chooce:',
         reply_markup=reply_markup
     )
-    return "HANDLE_MENU"
+    return "HANDLE_DESCRIPTION"
 
 
-def handle_menu(update, context):
+def handle_description(update, context):
     """Parses the CallbackQuery and updates the message text."""
     query = update.callback_query
     query.answer()
@@ -43,9 +51,11 @@ def handle_menu(update, context):
     img_url = data_item['attributes']['picture']['data'][0]['attributes']['url']
     response = requests.get(f"http://localhost:1337{img_url}")
     image_data = BytesIO(response.content)
-
+    context.bot.delete_message(chat_id=query.message.chat_id,
+                               message_id=query.message.message_id,
+                               )
     keyboard = [
-        [InlineKeyboardButton('Назад', callback_data='/start')]
+        [InlineKeyboardButton('Назад', callback_data='start')]
         ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     query.bot.send_photo(
@@ -56,11 +66,7 @@ def handle_menu(update, context):
                 f"{data_item['attributes']['description']}",
         reply_markup=reply_markup
     )
-    return "START"
-
-
-def handle_description(update, context):
-    pass
+    return "HANDLE_MENU"
 
 
 def handle_users_reply(update, context):
@@ -89,11 +95,10 @@ def handle_users_reply(update, context):
         user_state = 'START'
     else:
         user_state = db.get(chat_id).decode("utf-8")
-
     states_functions = {
         'START': start,
         'HANDLE_MENU': handle_menu,
-        # 'HANDLE_DESCRIPTION': start,
+        'HANDLE_DESCRIPTION': handle_description,
 
     }
     state_handler = states_functions[user_state]
