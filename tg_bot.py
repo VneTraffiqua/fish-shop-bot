@@ -44,18 +44,25 @@ def handle_menu(update, context):
 
 
 def handle_description(update, context):
-    """Parses the CallbackQuery and updates the message text."""
     query = update.callback_query
     query.answer()
-    data_item = get_item_by_id(strapi_token=strapi_token, item_id=query.data)['data']
-    img_url = data_item['attributes']['picture']['data'][0]['attributes']['url']
+    data_item = get_item_by_id(
+        strapi_token=strapi_token,
+        item_id=query.data
+    )['data']
+    img_url = data_item[
+        'attributes'
+    ]['picture']['data'][0]['attributes']['url']
     response = requests.get(f"http://localhost:1337{img_url}")
     image_data = BytesIO(response.content)
     context.bot.delete_message(chat_id=query.message.chat_id,
                                message_id=query.message.message_id,
                                )
     keyboard = [
-        [InlineKeyboardButton('Назад', callback_data='start')]
+        [InlineKeyboardButton(
+            'В корзину', callback_data='cart'
+        ),
+         InlineKeyboardButton('Назад', callback_data='menu')],
         ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     query.bot.send_photo(
@@ -88,7 +95,9 @@ def handle_users_reply(update, context):
         chat_id = update.message.chat_id
     elif update.callback_query:
         user_reply = update.callback_query.data
-        chat_id = update.callback_query.message.chat_id
+        chat_id = str(update.callback_query.message.chat_id)
+        if update.callback_query.data == 'cart':
+            create_cart(strapi_token,  chat_id)
     else:
         return
     if user_reply == '/start':
@@ -147,6 +156,19 @@ def get_item_by_id(strapi_token, item_id):
     response = requests.get(url, headers=header, params=params)
     response.raise_for_status()
     return response.json()
+
+
+def create_cart(strapi_token, tg_user_id):
+    url = f'http://localhost:1337/api/carts'
+    header = {
+        'Authorization': f'bearer {strapi_token}'
+    }
+    data = {
+        'data': {"tg_id": tg_user_id,}
+    }
+    response = requests.post(url, headers=header, json=data)
+    response.raise_for_status()
+    return
 
 
 if __name__ == '__main__':
