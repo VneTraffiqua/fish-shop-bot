@@ -27,9 +27,10 @@ def handle_menu(update, context):
     shop_items = get_shop_items(strapi_token)
     query = update.callback_query
     keyboard = [
-        [InlineKeyboardButton(
+        *[[InlineKeyboardButton(
             item['attributes']['title'], callback_data=item['id']
-        )] for item in shop_items['data']
+        )] for item in shop_items['data']],
+        [InlineKeyboardButton('Моя корзина', callback_data='my_cart')]
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -46,6 +47,7 @@ def handle_menu(update, context):
 def handle_description(update, context):
     query = update.callback_query
     query.answer()
+    print(query.data)
     data_item = get_item_by_id(
         strapi_token=strapi_token,
         item_id=query.data
@@ -59,10 +61,15 @@ def handle_description(update, context):
                                message_id=query.message.message_id,
                                )
     keyboard = [
-        [InlineKeyboardButton(
-            'В корзину', callback_data='cart'
-        ),
-         InlineKeyboardButton('Назад', callback_data='menu')],
+        [
+            InlineKeyboardButton(
+            'В корзину', callback_data=f'cart {query.data}'
+            )
+        ],
+        [
+            InlineKeyboardButton('Назад', callback_data='menu'),
+            InlineKeyboardButton('Моя корзина', callback_data='my_cart'),
+         ],
         ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     query.bot.send_photo(
@@ -73,7 +80,42 @@ def handle_description(update, context):
                 f"{data_item['attributes']['description']}",
         reply_markup=reply_markup
     )
-    return "HANDLE_MENU"
+    return
+
+
+def get_my_cart(update, context):
+    query = update.callback_query
+    query.answer()
+    context.bot.delete_message(chat_id=query.message.chat_id,
+                               message_id=query.message.message_id,
+                               )
+    url = f'http://localhost:1337/api/carts/{query.message.chat_id}'
+    header = {
+        'Authorization': f'bearer {strapi_token}'
+    }
+    params = {
+        'populate': ['cart_products', 'cart_products.product']
+    }
+    try:
+        response = requests.get(url, headers=header, params=params)
+        response.raise_for_status()
+        cart_items = response.json()
+        keyboard = [[
+            InlineKeyboardButton('Меню', callback_data='menu'),
+            InlineKeyboardButton('Очистить корзину',
+                                 callback_data='delete_cart'),
+        ]]
+        cart_items = [
+            item['attributes']['product']['data']['attributes']['title'] for
+            item in cart_items['data']['attributes']['cart_products']['data']]
+        text = f'Корзина:\n{[item for item in cart_items]}'
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.message.reply_text(
+            text=text,
+            reply_markup=reply_markup
+        )
+    except requests.exceptions.HTTPError:
+        print('qq_new_err')
 
 
 def handle_users_reply(update, context):
@@ -96,19 +138,36 @@ def handle_users_reply(update, context):
     elif update.callback_query:
         user_reply = update.callback_query.data
         chat_id = str(update.callback_query.message.chat_id)
-        if update.callback_query.data == 'cart':
-            create_cart(strapi_token,  chat_id)
+        print(user_reply, chat_id)
+        if user_reply.split(' ')[0] == 'cart':
+            print(user_reply)
+            try:
+                create_cart(strapi_token,  chat_id)
+            except requests.exceptions.HTTPError as err:
+                print(err)
+            item_id = user_reply.split(' ')[1]
+            add_item_in_cart(strapi_token, chat_id, item_id)
+            db.set(chat_id, 'HANDLE_DESCRIPTION')
+        elif user_reply == 'menu':
+            db.set(chat_id, 'HANDLE_MENU')
+        elif user_reply == 'my_cart':
+            db.set(chat_id, 'MY_CART')
+        elif user_reply == 'delete_cart':
+            delete_cart_products(strapi_token, chat_id)
+            db.set(chat_id, 'HANDLE_MENU')
+
     else:
         return
     if user_reply == '/start':
         user_state = 'START'
     else:
         user_state = db.get(chat_id).decode("utf-8")
+    print(user_state,)
     states_functions = {
         'START': start,
         'HANDLE_MENU': handle_menu,
         'HANDLE_DESCRIPTION': handle_description,
-
+        'MY_CART': get_my_cart,
     }
     state_handler = states_functions[user_state]
     # Если вы вдруг не заметите, что python-telegram-bot перехватывает ошибки.
@@ -164,7 +223,49 @@ def create_cart(strapi_token, tg_user_id):
         'Authorization': f'bearer {strapi_token}'
     }
     data = {
-        'data': {"tg_id": tg_user_id,}
+        'data': {"id": tg_user_id}
+    }
+    response = requests.post(url, headers=header, json=data)
+    response.raise_for_status()
+    return
+
+
+def delete_cart_products(strapi_token, tg_user_id):
+    print('go_delete_cart', tg_user_id)
+    url = f'http://localhost:1337/api/carts/{tg_user_id}'
+    header = {
+        'Authorization': f'bearer {strapi_token}'
+    }
+    params = {
+        'populate': ['cart_products']
+    }
+    response = requests.get(url, headers=header, params=params)
+    response.raise_for_status()
+    cart_products = response.json()['data']['attributes']['cart_products']['data']
+    for product in cart_products:
+        url = f'http://localhost:1337/api/cart-products/{product["id"]}'
+        header = {
+            'Authorization': f'bearer {strapi_token}'
+        }
+        data = {
+            'data': {'id': product['id']}
+        }
+        response = requests.delete(url, headers=header, json=data)
+        response.raise_for_status()
+        print(response.json())
+
+
+def add_item_in_cart(strapi_token, tg_user_id, item_id):
+    print('go_go_go! item in a cart')
+    url = f'http://localhost:1337/api/cart-products'
+    header = {
+        'Authorization': f'bearer {strapi_token}'
+    }
+    data = {
+        'data': {
+            "cart": [tg_user_id],
+            'product': [item_id]
+        }
     }
     response = requests.post(url, headers=header, json=data)
     response.raise_for_status()
