@@ -1,5 +1,3 @@
-import os
-import logging
 import redis
 import requests
 from io import BytesIO
@@ -47,7 +45,6 @@ def handle_menu(update, context):
 def handle_description(update, context):
     query = update.callback_query
     query.answer()
-    print(query.data)
     data_item = get_item_by_id(
         strapi_token=strapi_token,
         item_id=query.data
@@ -104,7 +101,8 @@ def get_my_cart(update, context):
             InlineKeyboardButton('Меню', callback_data='menu'),
             InlineKeyboardButton('Очистить корзину',
                                  callback_data='delete_cart'),
-        ]]
+        ], [InlineKeyboardButton('Оплатить',
+                                 callback_data='waiting_email')]]
         cart_items = [
             item['attributes']['product']['data']['attributes']['title'] for
             item in cart_items['data']['attributes']['cart_products']['data']]
@@ -115,7 +113,7 @@ def get_my_cart(update, context):
             reply_markup=reply_markup
         )
     except requests.exceptions.HTTPError:
-        print('qq_new_err')
+        create_cart(strapi_token, query.message.chat_id)
 
 
 def handle_users_reply(update, context):
@@ -135,12 +133,13 @@ def handle_users_reply(update, context):
     if update.message:
         user_reply = update.message.text
         chat_id = update.message.chat_id
+        if '@' in user_reply:
+            checkout(chat_id, user_reply)
+            user_reply = '/start'
     elif update.callback_query:
         user_reply = update.callback_query.data
         chat_id = str(update.callback_query.message.chat_id)
-        print(user_reply, chat_id)
         if user_reply.split(' ')[0] == 'cart':
-            print(user_reply)
             try:
                 create_cart(strapi_token,  chat_id)
             except requests.exceptions.HTTPError as err:
@@ -155,19 +154,20 @@ def handle_users_reply(update, context):
         elif user_reply == 'delete_cart':
             delete_cart_products(strapi_token, chat_id)
             db.set(chat_id, 'HANDLE_MENU')
-
+        elif user_reply == 'waiting_email':
+            db.set(chat_id, 'WAITING_EMAIL')
     else:
         return
     if user_reply == '/start':
         user_state = 'START'
     else:
         user_state = db.get(chat_id).decode("utf-8")
-    print(user_state,)
     states_functions = {
         'START': start,
         'HANDLE_MENU': handle_menu,
         'HANDLE_DESCRIPTION': handle_description,
         'MY_CART': get_my_cart,
+        'WAITING_EMAIL': waiting_email,
     }
     state_handler = states_functions[user_state]
     # Если вы вдруг не заметите, что python-telegram-bot перехватывает ошибки.
@@ -231,7 +231,6 @@ def create_cart(strapi_token, tg_user_id):
 
 
 def delete_cart_products(strapi_token, tg_user_id):
-    print('go_delete_cart', tg_user_id)
     url = f'http://localhost:1337/api/carts/{tg_user_id}'
     header = {
         'Authorization': f'bearer {strapi_token}'
@@ -241,7 +240,9 @@ def delete_cart_products(strapi_token, tg_user_id):
     }
     response = requests.get(url, headers=header, params=params)
     response.raise_for_status()
-    cart_products = response.json()['data']['attributes']['cart_products']['data']
+    cart_products = response.json()['data']['attributes']['cart_products'][
+        'data'
+    ]
     for product in cart_products:
         url = f'http://localhost:1337/api/cart-products/{product["id"]}'
         header = {
@@ -252,11 +253,9 @@ def delete_cart_products(strapi_token, tg_user_id):
         }
         response = requests.delete(url, headers=header, json=data)
         response.raise_for_status()
-        print(response.json())
 
 
 def add_item_in_cart(strapi_token, tg_user_id, item_id):
-    print('go_go_go! item in a cart')
     url = f'http://localhost:1337/api/cart-products'
     header = {
         'Authorization': f'bearer {strapi_token}'
@@ -270,6 +269,33 @@ def add_item_in_cart(strapi_token, tg_user_id, item_id):
     response = requests.post(url, headers=header, json=data)
     response.raise_for_status()
     return
+
+
+def waiting_email(update, context):
+    query = update.callback_query
+    context.bot.delete_message(chat_id=query.message.chat_id,
+                               message_id=query.message.message_id,
+                               )
+    query.message.reply_text(
+        text='Введите e-mail, для оформления заказа'
+    )
+
+
+def checkout(chat_id, user_reply):
+    try:
+        url = f'http://localhost:1337/api/tg-users/'
+        header = {
+            'Authorization': f'bearer {strapi_token}'
+        }
+        data = {
+            'data': {"id": chat_id, "email": user_reply, "cart": chat_id}
+        }
+        response = requests.post(url, headers=header, json=data)
+        response.raise_for_status()
+        delete_cart_products(strapi_token, chat_id)
+        return
+    except requests.exceptions.HTTPError:
+        return
 
 
 if __name__ == '__main__':
