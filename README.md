@@ -1,4 +1,5 @@
 # Fish-shop bot
+MVP version for demonstration to the customer. The bot is integrated with Strapi CMS.
 
 ![pic](https://dvmn.org/media/filer_public/0a/5b/0a5b562c-7cb4-43e3-b51b-1b61721200fb/fish-shop.gif)
 
