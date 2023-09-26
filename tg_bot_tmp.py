@@ -5,6 +5,9 @@ from environs import Env
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Filters, Updater
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
+from strapi_commands import (get_item_by_id, delete_cart_products,
+                             get_cart_items, get_shop_items,
+                             add_item_in_cart, create_cart, checkout)
 
 _database = None
 
@@ -80,23 +83,8 @@ def handle_description(update, context):
     return
 
 
-def get_my_cart(update, context):
-    query = update.callback_query
-    query.answer()
-    context.bot.delete_message(chat_id=query.message.chat_id,
-                               message_id=query.message.message_id,
-                               )
-    url = f'http://localhost:1337/api/carts/{query.message.chat_id}'
-    header = {
-        'Authorization': f'bearer {strapi_token}'
-    }
-    params = {
-        'populate': ['cart_products', 'cart_products.product']
-    }
-    try:
-        response = requests.get(url, headers=header, params=params)
-        response.raise_for_status()
-        cart_items = response.json()
+def get_cart(update, context):
+        cart_items = get_cart_items(update, context)
         keyboard = [[
             InlineKeyboardButton('Меню', callback_data='menu'),
             InlineKeyboardButton('Очистить корзину',
@@ -108,12 +96,12 @@ def get_my_cart(update, context):
             item in cart_items['data']['attributes']['cart_products']['data']]
         text = f'Корзина:\n{[item for item in cart_items]}'
         reply_markup = InlineKeyboardMarkup(keyboard)
-        query.message.reply_text(
+        update.callback_query.message.reply_text(
             text=text,
             reply_markup=reply_markup
         )
-    except requests.exceptions.HTTPError:
-        create_cart(strapi_token, query.message.chat_id)
+
+
 
 
 def handle_users_reply(update, context):
@@ -166,7 +154,7 @@ def handle_users_reply(update, context):
         'START': start,
         'HANDLE_MENU': handle_menu,
         'HANDLE_DESCRIPTION': handle_description,
-        'MY_CART': get_my_cart,
+        'MY_CART': get_cart,
         'WAITING_EMAIL': waiting_email,
     }
     state_handler = states_functions[user_state]
@@ -189,86 +177,10 @@ def get_database_connection():
         database_password = env.str("REDIS_PASS")
         database_host = env.str("REDIS_HOST")
         database_port = env.str("REDIS_PORT")
-        _database = redis.Redis(host=database_host, port=database_port,
-                                password=database_password)
+        _database = redis.Redis(host='localhost', port=6379, db=0,)
+            # host=database_host, port=database_port,
+            #                     password=database_password)
     return _database
-
-
-def get_shop_items(strapi_token):
-    url = 'http://localhost:1337/api/products'
-    header = {
-        'Authorization': f'bearer {strapi_token}'
-    }
-    response = requests.get(url, headers=header)
-    response.raise_for_status()
-    return response.json()
-
-
-def get_item_by_id(strapi_token, item_id):
-    url = f'http://localhost:1337/api/products/{item_id}'
-    header = {
-        'Authorization': f'bearer {strapi_token}'
-    }
-    params = {
-        'populate': 'picture'
-    }
-    response = requests.get(url, headers=header, params=params)
-    response.raise_for_status()
-    return response.json()
-
-
-def create_cart(strapi_token, tg_user_id):
-    url = f'http://localhost:1337/api/carts'
-    header = {
-        'Authorization': f'bearer {strapi_token}'
-    }
-    data = {
-        'data': {"id": tg_user_id}
-    }
-    response = requests.post(url, headers=header, json=data)
-    response.raise_for_status()
-    return
-
-
-def delete_cart_products(strapi_token, tg_user_id):
-    url = f'http://localhost:1337/api/carts/{tg_user_id}'
-    header = {
-        'Authorization': f'bearer {strapi_token}'
-    }
-    params = {
-        'populate': ['cart_products']
-    }
-    response = requests.get(url, headers=header, params=params)
-    response.raise_for_status()
-    cart_products = response.json()['data']['attributes']['cart_products'][
-        'data'
-    ]
-    for product in cart_products:
-        url = f'http://localhost:1337/api/cart-products/{product["id"]}'
-        header = {
-            'Authorization': f'bearer {strapi_token}'
-        }
-        data = {
-            'data': {'id': product['id']}
-        }
-        response = requests.delete(url, headers=header, json=data)
-        response.raise_for_status()
-
-
-def add_item_in_cart(strapi_token, tg_user_id, item_id):
-    url = f'http://localhost:1337/api/cart-products'
-    header = {
-        'Authorization': f'bearer {strapi_token}'
-    }
-    data = {
-        'data': {
-            "cart": [tg_user_id],
-            'product': [item_id]
-        }
-    }
-    response = requests.post(url, headers=header, json=data)
-    response.raise_for_status()
-    return
 
 
 def waiting_email(update, context):
@@ -279,23 +191,6 @@ def waiting_email(update, context):
     query.message.reply_text(
         text='Введите e-mail, для оформления заказа'
     )
-
-
-def checkout(chat_id, user_reply):
-    try:
-        url = f'http://localhost:1337/api/tg-users/'
-        header = {
-            'Authorization': f'bearer {strapi_token}'
-        }
-        data = {
-            'data': {"id": chat_id, "email": user_reply, "cart": chat_id}
-        }
-        response = requests.post(url, headers=header, json=data)
-        response.raise_for_status()
-        delete_cart_products(strapi_token, chat_id)
-        return
-    except requests.exceptions.HTTPError:
-        return
 
 
 if __name__ == '__main__':
