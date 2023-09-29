@@ -60,7 +60,7 @@ def create_cart(strapi_token, tg_user_id):
     data = {
         'data': {"id": tg_user_id}
     }
-    response = requests.post(url, headers=header, json=data)
+    response = requests.post(url, headers=header)
     response.raise_for_status()
     return
 
@@ -93,9 +93,12 @@ def add_item_in_cart(strapi_token, tg_user_id, item_id):
             'product': [item_id]
         }
     }
-    response = requests.post(url, headers=header, json=data)
-    response.raise_for_status()
-    return
+    try:
+        response = requests.post(url, headers=header, json=data)
+        response.raise_for_status()
+        return
+    except requests.exceptions.HTTPError:
+        create_cart(strapi_token, tg_user_id)
 
 
 def delete_cart_products(strapi_token, tg_user_id):
