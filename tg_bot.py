@@ -2,7 +2,7 @@ import redis
 import requests
 from io import BytesIO
 from environs import Env
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ChatAction
 from telegram.ext import Filters, Updater
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
 from strapi_commands import (get_item_by_id, delete_cart_products,
@@ -27,6 +27,9 @@ def start(update, context):
 def handle_menu(update, context):
     shop_items = get_shop_items(strapi_token)
     query = update.callback_query
+    context.bot.delete_message(chat_id=query.message.chat_id,
+                               message_id=query.message.message_id,
+                               )
     keyboard = [
         *[[InlineKeyboardButton(
             item['attributes']['title'], callback_data=item['id']
@@ -35,19 +38,17 @@ def handle_menu(update, context):
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    context.bot.delete_message(chat_id=query.message.chat_id,
-                               message_id=query.message.message_id,
-                               )
     query.message.reply_text(
         text='Please, chooce:',
         reply_markup=reply_markup
     )
-    return "HANDLE_DESCRIPTION"
+    return 'HANDLE_STATE_CHANGE'
 
 
 def handle_description(update, context):
     query = update.callback_query
-    query.answer()
+    context.bot.send_chat_action(chat_id=query.message.chat_id,
+                                 action=ChatAction.TYPING)
     data_item = get_item_by_id(
         strapi_token=strapi_token,
         item_id=query.data
@@ -80,7 +81,7 @@ def handle_description(update, context):
                 f"{data_item['attributes']['description']}",
         reply_markup=reply_markup
     )
-    return
+    return 'HANDLE_STATE_CHANGE'
 
 
 def get_cart(update, context):
@@ -100,72 +101,54 @@ def get_cart(update, context):
             text=text,
             reply_markup=reply_markup
         )
+        return 'HANDLE_STATE_CHANGE'
 
 
+def waiting_email(update, context):
+    query = update.callback_query
+    context.bot.delete_message(chat_id=query.message.chat_id,
+                               message_id=query.message.message_id,
+                               )
+    query.message.reply_text(
+        text='Введите e-mail, для оформления заказа'
+    )
+    return 'START'
 
 
-def handle_users_reply(update, context):
-    """
-    Функция, которая запускается при любом сообщении от пользователя и решает как его обработать.
-    Эта функция запускается в ответ на эти действия пользователя:
-        * Нажатие на inline-кнопку в боте
-        * Отправка сообщения боту
-        * Отправка команды боту
-    Она получает стейт пользователя из базы данных и запускает соответствующую функцию-обработчик (хэндлер).
-    Функция-обработчик возвращает следующее состояние, которое записывается в базу данных.
-    Если пользователь только начал пользоваться ботом, Telegram форсит его написать "/start",
-    поэтому по этой фразе выставляется стартовое состояние.
-    Если пользователь захочет начать общение с ботом заново, он также может воспользоваться этой командой.
-    """
-    db = get_database_connection()
-    if update.message:
-        user_reply = update.message.text
-        chat_id = update.message.chat_id
-        if '@' in user_reply:
-            checkout(chat_id, user_reply)
-            user_reply = '/start'
-    elif update.callback_query:
+def handle_state_change(update, context):
+    chat_id = update.effective_chat.id
+    if update.callback_query:
         user_reply = update.callback_query.data
-        chat_id = str(update.callback_query.message.chat_id)
-        if user_reply.split(' ')[0] == 'cart':
-            try:
-                create_cart(strapi_token,  chat_id)
-            except requests.exceptions.HTTPError as err:
-                print(err)
-            item_id = user_reply.split(' ')[1]
-            add_item_in_cart(strapi_token, chat_id, item_id)
-            db.set(chat_id, 'HANDLE_DESCRIPTION')
-        elif user_reply == 'menu':
-            db.set(chat_id, 'HANDLE_MENU')
-        elif user_reply == 'my_cart':
-            db.set(chat_id, 'MY_CART')
-        elif user_reply == 'delete_cart':
-            delete_cart_products(strapi_token, chat_id)
-            db.set(chat_id, 'HANDLE_MENU')
-        elif user_reply == 'waiting_email':
-            db.set(chat_id, 'WAITING_EMAIL')
+        update.callback_query.answer()
     else:
-        return
-    if user_reply == '/start':
-        user_state = 'START'
+        user_reply = update.message.text
+    if user_reply.split(' ')[0] == 'cart':
+        try:
+            create_cart(strapi_token, chat_id)
+        except requests.exceptions.HTTPError as err:
+            print(err)
+        item_id = user_reply.split(' ')[1]
+        add_item_in_cart(strapi_token, chat_id, item_id)
+        return 'HANDLE_STATE_CHANGE'
+    elif user_reply == 'my_cart':
+        get_cart(update, context)
+        return 'HANDLE_STATE_CHANGE'
+    elif user_reply == 'menu':
+        handle_menu(update, context)
+        return 'HANDLE_STATE_CHANGE'
+    elif user_reply == 'waiting_email':
+        waiting_email(update, context)
+        return 'HANDLE_STATE_CHANGE'
+    elif user_reply == 'delete_cart':
+        delete_cart_products(strapi_token, chat_id)
+        handle_menu(update, context)
+        return 'HANDLE_STATE_CHANGE'
+    elif '@' in user_reply:
+        checkout(chat_id, user_reply)
+        return 'HANDLE_STATE_CHANGE'
     else:
-        user_state = db.get(chat_id).decode("utf-8")
-    states_functions = {
-        'START': start,
-        'HANDLE_MENU': handle_menu,
-        'HANDLE_DESCRIPTION': handle_description,
-        'MY_CART': get_cart,
-        'WAITING_EMAIL': waiting_email,
-    }
-    state_handler = states_functions[user_state]
-    # Если вы вдруг не заметите, что python-telegram-bot перехватывает ошибки.
-    # Оставляю этот try...except, чтобы код не падал молча.
-    # Этот фрагмент можно переписать.
-    try:
-        next_state = state_handler(update, context)
-        db.set(chat_id, next_state)
-    except Exception as err:
-        print(err)
+        handle_description(update, context)
+        return 'HANDLE_STATE_CHANGE'
 
 
 def get_database_connection():
@@ -183,14 +166,37 @@ def get_database_connection():
     return _database
 
 
-def waiting_email(update, context):
-    query = update.callback_query
-    context.bot.delete_message(chat_id=query.message.chat_id,
-                               message_id=query.message.message_id,
-                               )
-    query.message.reply_text(
-        text='Введите e-mail, для оформления заказа'
-    )
+def handle_users_reply(update, context):
+    db = get_database_connection()
+    if update.message:
+        user_reply = update.message.text
+        chat_id = update.message.chat_id
+    elif update.callback_query:
+        user_reply = update.callback_query.data
+        chat_id = str(update.callback_query.message.chat_id)
+    else:
+        return
+    if user_reply == '/start':
+        user_state = 'START'
+    else:
+        user_state = db.get(chat_id).decode("utf-8")
+    print(user_state)
+
+    states_functions = {
+        'START': start,
+        'HANDLE_MENU': handle_menu,
+        'HANDLE_STATE_CHANGE': handle_state_change,
+        'HANDLE_DESCRIPTION': handle_description,
+        'MY_CART': get_cart,
+        'WAITING_EMAIL': waiting_email,
+    }
+    state_handler = states_functions[user_state]
+    try:
+        next_state = state_handler(update, context)
+        print(f'next state:{next_state}')
+        db.set(chat_id, next_state)
+    except Exception as err:
+        print(err)
 
 
 if __name__ == '__main__':
@@ -206,3 +212,4 @@ if __name__ == '__main__':
     dispatcher.add_handler(CommandHandler('start', handle_users_reply))
     updater.start_polling()
     updater.idle()
+
