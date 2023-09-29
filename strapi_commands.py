@@ -4,6 +4,7 @@ from environs import Env
 env = Env()
 env.read_env()
 strapi_token = env.str('STRAPI_TOKEN')
+strapi_url = env.str('STRAPI_URL')
 
 
 def get_cart_items(update, context):
@@ -12,7 +13,7 @@ def get_cart_items(update, context):
     context.bot.delete_message(chat_id=query.message.chat_id,
                                message_id=query.message.message_id,
                                )
-    url = f'http://localhost:1337/api/carts/{query.message.chat_id}'
+    url = f'{strapi_url}/api/carts/{query.message.chat_id}'
     header = {
         'Authorization': f'bearer {strapi_token}'
     }
@@ -30,7 +31,7 @@ def get_cart_items(update, context):
 
 
 def get_shop_items(strapi_token):
-    url = 'http://localhost:1337/api/products'
+    url = f'{strapi_url}/api/products'
     header = {
         'Authorization': f'bearer {strapi_token}'
     }
@@ -40,7 +41,7 @@ def get_shop_items(strapi_token):
 
 
 def get_item_by_id(strapi_token, item_id):
-    url = f'http://localhost:1337/api/products/{item_id}'
+    url = f'{strapi_url}/api/products/{item_id}'
     header = {
         'Authorization': f'bearer {strapi_token}'
     }
@@ -53,7 +54,7 @@ def get_item_by_id(strapi_token, item_id):
 
 
 def create_cart(strapi_token, tg_user_id):
-    url = f'http://localhost:1337/api/carts'
+    url = f'{strapi_url}/api/carts'
     header = {
         'Authorization': f'bearer {strapi_token}'
     }
@@ -67,7 +68,7 @@ def create_cart(strapi_token, tg_user_id):
 
 def checkout(chat_id, user_reply):
     try:
-        url = f'http://localhost:1337/api/tg-users/'
+        url = f'{strapi_url}/api/tg-users/'
         header = {
             'Authorization': f'bearer {strapi_token}'
         }
@@ -83,7 +84,7 @@ def checkout(chat_id, user_reply):
 
 
 def add_item_in_cart(strapi_token, tg_user_id, item_id):
-    url = f'http://localhost:1337/api/cart-products'
+    url = f'{strapi_url}/api/cart-products'
     header = {
         'Authorization': f'bearer {strapi_token}'
     }
@@ -102,7 +103,7 @@ def add_item_in_cart(strapi_token, tg_user_id, item_id):
 
 
 def delete_cart_products(strapi_token, tg_user_id):
-    url = f'http://localhost:1337/api/carts/{tg_user_id}'
+    url = f'{strapi_url}/api/carts/{tg_user_id}'
     header = {
         'Authorization': f'bearer {strapi_token}'
     }
@@ -115,7 +116,7 @@ def delete_cart_products(strapi_token, tg_user_id):
         'data'
     ]
     for product in cart_products:
-        url = f'http://localhost:1337/api/cart-products/{product["id"]}'
+        url = f'{strapi_url}/api/cart-products/{product["id"]}'
         header = {
             'Authorization': f'bearer {strapi_token}'
         }
@@ -128,7 +129,7 @@ def delete_cart_products(strapi_token, tg_user_id):
 
 def checkout(chat_id, user_reply):
     try:
-        url = f'http://localhost:1337/api/tg-users/'
+        url = f'{strapi_url}/api/tg-users/'
         header = {
             'Authorization': f'bearer {strapi_token}'
         }
