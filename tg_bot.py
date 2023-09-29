@@ -160,9 +160,9 @@ def get_database_connection():
         database_password = env.str("REDIS_PASS")
         database_host = env.str("REDIS_HOST")
         database_port = env.str("REDIS_PORT")
-        _database = redis.Redis(host='localhost', port=6379, db=0,)
-            # host=database_host, port=database_port,
-            #                     password=database_password)
+        _database = redis.Redis(
+            host=database_host, port=database_port,
+                                password=database_password)
     return _database
 
 
@@ -180,7 +180,6 @@ def handle_users_reply(update, context):
         user_state = 'START'
     else:
         user_state = db.get(chat_id).decode("utf-8")
-    print(user_state)
 
     states_functions = {
         'START': start,
@@ -193,7 +192,6 @@ def handle_users_reply(update, context):
     state_handler = states_functions[user_state]
     try:
         next_state = state_handler(update, context)
-        print(f'next state:{next_state}')
         db.set(chat_id, next_state)
     except Exception as err:
         print(err)
