@@ -128,17 +128,15 @@ def delete_cart_products(strapi_token, tg_user_id):
 
 
 def checkout(chat_id, user_reply):
-    try:
-        url = f'{strapi_url}/api/tg-users/'
-        header = {
-            'Authorization': f'bearer {strapi_token}'
-        }
-        data = {
-            'data': {"id": chat_id, "email": user_reply, "cart": chat_id}
-        }
-        response = requests.post(url, headers=header, json=data)
-        response.raise_for_status()
-        delete_cart_products(strapi_token, chat_id)
-        return
-    except requests.exceptions.HTTPError:
-        return
+    url = f'{strapi_url}/api/tg-users/'
+    header = {
+        'Authorization': f'bearer {strapi_token}'
+    }
+    data = {
+        'data': {"id": chat_id, "email": user_reply, "cart": chat_id}
+    }
+    response = requests.post(url, headers=header, json=data)
+    response.raise_for_status()
+    delete_cart_products(strapi_token, chat_id)
+    return
+
