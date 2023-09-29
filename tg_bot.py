@@ -34,7 +34,7 @@ def handle_menu(update, context):
         *[[InlineKeyboardButton(
             item['attributes']['title'], callback_data=item['id']
         )] for item in shop_items['data']],
-        [InlineKeyboardButton('Моя корзина', callback_data='my_cart')]
+        [InlineKeyboardButton('Моя корзина', callback_data='get_cart')]
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -69,7 +69,7 @@ def handle_description(update, context):
         ],
         [
             InlineKeyboardButton('Назад', callback_data='menu'),
-            InlineKeyboardButton('Моя корзина', callback_data='my_cart'),
+            InlineKeyboardButton('Моя корзина', callback_data='get_cart'),
          ],
         ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -130,7 +130,7 @@ def handle_state_change(update, context):
         item_id = user_reply.split(' ')[1]
         add_item_in_cart(strapi_token, chat_id, item_id)
         return 'HANDLE_STATE_CHANGE'
-    elif user_reply == 'my_cart':
+    elif user_reply == 'get_cart':
         get_cart(update, context)
         return 'HANDLE_STATE_CHANGE'
     elif user_reply == 'menu':
@@ -186,7 +186,7 @@ def handle_users_reply(update, context):
         'HANDLE_MENU': handle_menu,
         'HANDLE_STATE_CHANGE': handle_state_change,
         'HANDLE_DESCRIPTION': handle_description,
-        'MY_CART': get_cart,
+        'GET_CART': get_cart,
         'WAITING_EMAIL': waiting_email,
     }
     state_handler = states_functions[user_state]
