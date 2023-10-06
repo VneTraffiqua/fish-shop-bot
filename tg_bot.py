@@ -18,7 +18,7 @@ def start(update, context):
             chat_id=update.callback_query.message.chat_id,
             message_id=update.callback_query.message.message_id,
         )
-    shop_items = get_shop_items(strapi_token)
+    shop_items = get_shop_items(strapi_token, strapi_url)
     keyboard = [
         *[[InlineKeyboardButton(
             item['attributes']['title'], callback_data=item['id']
@@ -44,6 +44,7 @@ def handle_menu_button(update, context):
     if query.data.isnumeric():
         data_item = get_item_by_id(
             strapi_token=strapi_token,
+            strapi_url=strapi_url,
             item_id=query.data
         )['data']
         img_url = data_item[
@@ -73,7 +74,9 @@ def handle_menu_button(update, context):
         )
         return 'HANDLE_DESCRIPTION_BUTTON'
     else:
-        cart_items = get_or_create_cart(strapi_token, query.message.chat_id)
+        cart_items = get_or_create_cart(
+            strapi_token, strapi_url, query.message.chat_id
+        )
         keyboard = [[
             InlineKeyboardButton('Меню', callback_data='start'),
             InlineKeyboardButton('Очистить корзину',
@@ -101,7 +104,9 @@ def handle_description_button(update, context):
         context.bot.delete_message(chat_id=query.message.chat_id,
                                    message_id=query.message.message_id,
                                    )
-        cart_items = get_or_create_cart(strapi_token, query.message.chat_id)
+        cart_items = get_or_create_cart(
+            strapi_token, strapi_url, query.message.chat_id
+        )
         keyboard = [[
             InlineKeyboardButton('Меню', callback_data='start'),
             InlineKeyboardButton('Очистить корзину',
@@ -125,7 +130,9 @@ def handle_description_button(update, context):
         return 'START'
     else:
         item_id = query.data.split(' ')[1]
-        add_item_in_cart(strapi_token, query.message.chat_id, item_id)
+        add_item_in_cart(
+            strapi_token, strapi_url, query.message.chat_id, item_id
+        )
         return 'HANDLE_DESCRIPTION_BUTTON'
 
 
@@ -134,9 +141,9 @@ def handle_cart_button(update, context):
     query.answer()
     if query.data == 'start':
         start(update, context)
-        return 'START'
+        return 'HANDLE_MENU_BUTTON'
     elif query.data == 'delete_cart':
-        delete_cart_products(strapi_token, query.message.chat_id)
+        delete_cart_products(strapi_token, strapi_url, query.message.chat_id)
         start(update, context)
         return 'HANDLE_MENU_BUTTON'
     else:
@@ -152,7 +159,7 @@ def handle_cart_button(update, context):
 
 def handle_email(update, context):
     user_email = update.message.text
-    checkout(update.message.chat_id, user_email)
+    checkout(strapi_url, update.message.chat_id, user_email)
     start(update, context)
     return 'HANDLE_MENU_BUTTON'
 
@@ -166,11 +173,12 @@ def get_database_connection():
         database_password = env.str("REDIS_PASS")
         database_host = env.str("REDIS_HOST")
         database_port = env.str("REDIS_PORT")
-        _database = redis.Redis(
-            host=database_host,
-            port=database_port,
-            password=database_password
-        )
+        # _database = redis.Redis(
+        #     host=database_host,
+        #     port=database_port,
+        #     password=database_password
+        # )
+        _database = redis.Redis(host='localhost', port=6379, db=0, )
     return _database
 
 
