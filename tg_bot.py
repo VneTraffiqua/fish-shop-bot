@@ -187,7 +187,6 @@ def handle_users_reply(update, context):
         user_state = 'START'
     else:
         user_state = db.get(chat_id).decode("utf-8")
-        print(user_state)
     states_functions = {
         'START': start,
         'HANDLE_MENU_BUTTON': handle_menu_button,
