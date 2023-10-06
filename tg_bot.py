@@ -173,12 +173,11 @@ def get_database_connection():
         database_password = env.str("REDIS_PASS")
         database_host = env.str("REDIS_HOST")
         database_port = env.str("REDIS_PORT")
-        # _database = redis.Redis(
-        #     host=database_host,
-        #     port=database_port,
-        #     password=database_password
-        # )
-        _database = redis.Redis(host='localhost', port=6379, db=0, )
+        _database = redis.Redis(
+            host=database_host,
+            port=database_port,
+            password=database_password
+        )
     return _database
 
 
